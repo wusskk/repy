@@ -49,21 +49,20 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-      - name: Set timestamp (Linux)
-        if: runner.os != 'Windows'
-        id: timestamp
-        run: echo "time=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
-
-      - name: Set timestamp (Windows)
-        if: runner.os == 'Windows'
-        id: timestamp
-        run: echo "time=$(PowerShell -Command \"Get-Date -Format 'yyyyMMddHHmmss'\")" >> $GITHUB_ENV
+      - name: Determine artifact name
+        id: artifact_name
+        run: |
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            echo "artifact_name=repy-windows-${{ github.run_id }}-${{ github.run_number }}.exe" >> $GITHUB_OUTPUT
+          else
+            echo "artifact_name=repy-linux-${{ github.run_id }}-${{ github.run_number }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Print artifact name
-        run: echo "Artifact name: build-artifacts-${{ github.run_id }}-${{ github.run_number }}-${{ env.time }}"
+        run: echo "Artifact name: ${{ steps.artifact_name.outputs.artifact_name }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts-${{ github.run_id }}-${{ github.run_number }}-${{ env.time }}
+          name: ${{ steps.artifact_name.outputs.artifact_name }}
           path: ${{ matrix.os == 'windows-latest' && 'target/release/repy.exe' || 'target/release/repy' }}
