@@ -49,8 +49,20 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+      - name: Set timestamp
+        id: timestamp
+        run: |
+          if [ ${{ runner.os }} == 'Windows' ]; then
+            echo "::set-output name=time::$(PowerShell -Command \"Get-Date -Format 'yyyyMMddHHmmss'\")"
+          else
+            echo "::set-output name=time::$(date +%Y%m%d%H%M%S)"
+          fi
+
+      - name: Print artifact name
+        run: echo "Artifact name: build-artifacts-${{ github.run_id }}-${{ github.run_number }}-${{ steps.timestamp.outputs.time }}"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts-${{ github.run_id }}-${{ github.run_number }}
+          name: build-artifacts-${{ github.run_id }}-${{ github.run_number }}-${{ steps.timestamp.outputs.time }}
           path: ${{ matrix.os == 'windows-latest' && 'target/release/repy.exe' || 'target/release/repy' }}
