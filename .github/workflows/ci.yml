@@ -52,5 +52,5 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
-          path: target/release/
+          name: build-artifacts-${{ github.run_id }}
+          path: ${{ matrix.os == 'windows-latest' && 'target/release/repy.exe' || 'target/release/repy' }}
