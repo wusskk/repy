@@ -58,8 +58,8 @@ jobs:
             echo "artifact_name=repy-linux-${{ github.run_id }}-${{ github.run_number }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Print artifact name
-        run: echo "Artifact name: ${{ steps.artifact_name.outputs.artifact_name }}"
+      # - name: Print artifact name
+      #   run: echo "Artifact name: ${{ steps.artifact_name.outputs.artifact_name }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
