@@ -1,9 +1,7 @@
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use reqwest::blocking::get;
-use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Write};
+use repy::{check_version, download_file, modify_pth_file, unzip_file};
 use std::path::Path;
-use zip::ZipArchive;
 
 #[derive(Parser)]
 #[command(name = "repy")]
@@ -16,8 +14,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Init {
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "3.12.6")]
         version: String,
+        #[arg(short, long, value_parser = ["win32", "amd64", "arm64"], default_value = "amd64")]
+        arch: String,
     },
     Install {
         #[arg(short, long)]
@@ -26,55 +26,19 @@ enum Commands {
     },
 }
 
-fn download_file(url: &str, path: &Path) -> io::Result<()> {
-    let mut resp = get(url).expect("Failed to download file");
-    let mut out = File::create(path)?;
-    io::copy(&mut resp, &mut out)?;
-    Ok(())
-}
-
-fn unzip_file(zip_path: &Path, dest: &Path) -> io::Result<()> {
-    let file = File::open(zip_path)?;
-    let mut archive = ZipArchive::new(file)?;
-    archive.extract(dest)?;
-    Ok(())
-}
-
-fn modify_pth_file(pth_path: &Path) -> io::Result<()> {
-    let file = File::open(pth_path)?;
-    let reader = BufReader::new(file);
-
-    // 创建一个临时文件来写入修改后的内容
-    let temp_file_path = "python312._pth.tmp";
-    let mut temp_file = File::create(temp_file_path)?;
-
-    // 逐行读取文件内容并进行修改
-    for line in reader.lines() {
-        let line = line?;
-        if line.contains("import site") {
-            // 如果包含，则重写为 "import site"
-            writeln!(temp_file, "import site")?;
-        } else {
-            // 否则，保持原样
-            writeln!(temp_file, "{}", line)?;
-        }
-    }
-
-    // 将临时文件重命名为原文件
-    fs::rename(temp_file_path, pth_path)?;
-
-    println!("文件修改完成！");
-    Ok(())
-}
-
-fn main() -> io::Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Init { version } => {
+        Commands::Init { version, arch } => {
+            // 进行版本号的校验
+            if !check_version(version) {
+                anyhow::bail!("Invalid version number");
+            }
+
             let python_url = format!(
-                "https://www.python.org/ftp/python/{}/python-{}-embed-amd64.zip",
-                version, version
+                "https://www.python.org/ftp/python/{}/python-{}-embed-{}.zip",
+                version, version, arch
             );
             let get_pip_url = "https://bootstrap.pypa.io/get-pip.py";
 
@@ -99,12 +63,14 @@ fn main() -> io::Result<()> {
 
             println!("Running get-pip.py...");
             // 获取python.exe的绝对路径
-            let python_path = Path::new("python.exe").canonicalize()?;
+            let python_path = Path::new("python.exe")
+                .canonicalize()
+                .context("Failed to get canonical path for python.exe")?;
 
             let output = std::process::Command::new(python_path)
                 .arg("get-pip.py")
                 .output()
-                .expect("Failed to execute");
+                .context("Failed to execute get-pip.py")?;
 
             if output.status.success() {
                 // 将命令的标准输出转换为字符串并打印
@@ -119,8 +85,10 @@ fn main() -> io::Result<()> {
             println!("Python environment setup complete.");
         }
         Commands::Install { proxy, packages } => {
-            let python_path = Path::new("python.exe").canonicalize()?;
-            println!("Python path: {:?}", python_path);
+            let python_path = Path::new("python.exe")
+                .canonicalize()
+                .context("Failed to get canonical path for python.exe")?;
+
             let mut cmd = std::process::Command::new(python_path);
             cmd.arg("-m").arg("pip").arg("install");
 
@@ -132,10 +100,15 @@ fn main() -> io::Result<()> {
                 cmd.arg(package);
             }
 
-            let output = cmd.output().expect("Failed to run pip install");
+            let output = cmd.output().context("Failed to run pip install")?;
 
-            io::stdout().write_all(&output.stdout)?;
-            io::stderr().write_all(&output.stderr)?;
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                println!("{}", stdout);
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("Command failed: {}", stderr);
+            }
         }
     }
 
